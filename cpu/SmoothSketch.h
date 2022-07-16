@@ -121,6 +121,9 @@ public:
 		return (TowerSketch[k][i][j] & (((1 << (end - start)) - 1) << start)) >> start;
 	}
 	void insert(ID_TYPE id, uint32_t win) {
+		// if(win == 0)
+			// std::cout<<"S: "<<NumOfWin<<std::endl;
+
 		for (int i = 0; i < 3; ++i) {
 			uint32_t index = hash(id, i) % size[i];
 			uint32_t cell = index * counter_bit[i] / 32;
@@ -170,8 +173,8 @@ public:
 			slot[i] = new Slot<ID_TYPE> [bucket_size];
 			// memset(slot[i], 0, bucket_size * sizeof(Slot<ID_TYPE>));
 		}
-		// oFile.open("./ttmp2.csv", std::ios::app);
-		// oFile<<"Smooth"<<std::endl;
+		oFile.open("./ttmp2.csv", std::ios::app);
+		oFile<<"Smooth"<<std::endl;
 
 	}
 	Stage2(uint32_t memory, double var_input, double error_input, int CellNum, double potential) {
@@ -187,8 +190,8 @@ public:
 			slot[i] = new Slot<ID_TYPE> [bucket_size];
 			// memset(slot[i], 0, bucket_size * sizeof(Slot<ID_TYPE>));
 		}
-		// oFile.open("./ttmp2.csv", std::ios::app);
-		// oFile<<"Smooth"<<std::endl;
+		oFile.open("./ttmp2.csv", std::ios::app);
+		oFile<<"Smooth"<<std::endl;
 		
 	}
 
@@ -196,7 +199,7 @@ public:
 		for (int i = 0; i < size; ++i) 
 			delete slot[i];
 		delete slot;
-		// oFile.close();
+		oFile.close();
 	}
 	int query(ID_TYPE id) {
 		// return which cell id is in, -1 if does not exist
@@ -249,8 +252,9 @@ public:
 				t -= l[k] * pow(j, k);
 			error += t * t;
 		}
-		id_weight = abs(l[K]) / ((error + eps));
+		id_weight = abs(l[K]) / ((error + eps)*(error + eps));
 		
+
 		if (id_weight < potential_thres)
 			return;
 		int min_start_window = inf;
@@ -271,6 +275,14 @@ public:
 		}
 	}
 	void check(uint32_t win) {
+		/*****/
+		if(win == 0) {
+			std::cout<<"var_thres: "<<var_thres<<std::endl;
+		}
+		/******/
+	#ifdef PREDICT_MODE
+		std::map<ID_TYPE, uint32_t> predict_result;
+	#endif
 		for (int i = 0; i < size; ++i) {
 			for (int j = 0; j < bucket_size; ++j) {
 				if (slot[i][j].id == 0)
@@ -309,11 +321,16 @@ public:
 					}
 					if (error / P <= error_thres) {
 						result.emplace_back(std::make_pair(slot[i][j].id, win));
-						// oFile<<slot[i][j].id<<",";
-						// for(int t = 0; t < P; ++t){
-						// 	oFile<<slot[i][j].counter[t]<<",";
-						// }
-						// oFile<<std::endl;
+						#ifdef PREDICT_MODE
+							double pred_res = 0.0;
+							for (int k = 0; k <= K; ++k) {
+								pred_res += b[k] * pow(P, k);
+							} 
+							if (pred_res < 0) 
+								predict_result[slot[i][j].id] = 0;
+							else 
+								predict_result[slot[i][j].id] = (int)(pred_res + 0.5);
+						#endif
 					}
 					else {
 						if (win >= P + slot[i][j].start_window) {
@@ -324,6 +341,9 @@ public:
 				}
 			}
 		}
+		#ifdef PREDICT_MODE
+			predict[win + 1] = predict_result;
+		#endif
 	}
 	void get_all(uint32_t win) {
 		for (int i = 0 ; i < size; ++i) {
@@ -343,10 +363,13 @@ private:
 	double var_thres = var_thres_p;
 	// int S = S_p;
 	double potential_thres = potential_thres_p;
-	// std::ofstream oFile;
+	std::ofstream oFile;
 public:
 	std::vector<std::pair<ID_TYPE, uint32_t>> result;
 	std::vector<Report_Slot<ID_TYPE>> report_top_k;
+#ifdef PREDICT_MODE
+	std::map<ID_TYPE, std::map<uint64_t, uint32_t>> predict;
+#endif
 };
 
 template<typename ID_TYPE>
@@ -355,10 +378,10 @@ public:
 	SmoothSketch() {}
 	SmoothSketch(uint32_t memory) : win_cnt(0), last_timestamp(0) {
 
-		double stage1_mem = memory * stage_ratio;
-		// double stage1_mem = memory * S;
-		double stage2_mem = memory * (1 - stage_ratio);
-		// double stage2_mem = 100;
+		// double stage1_mem = memory * stage_ratio;
+		double stage1_mem = memory * S;
+		// double stage2_mem = memory * (1 - stage_ratio);
+		double stage2_mem = 100;
 		stage1 = new Stage1<ID_TYPE>(stage1_mem);
 		stage2 = new Stage2<ID_TYPE>(stage2_mem);
 	}
@@ -367,10 +390,10 @@ public:
 		var_thers = var_input;
 		error_thres = error_input;
 		bucket_size = CellNum;
-		double stage1_mem = memory * stage_ratio;
-		// double stage1_mem = memory ;
-		double stage2_mem = memory * (1 - stage_ratio);
-		// double stage2_mem = 30;
+		// double stage1_mem = memory * stage_ratio;
+		double stage1_mem = memory * S;
+		// double stage2_mem = memory * (1 - stage_ratio);
+		double stage2_mem = 100;
 		stage1 = new Stage1<ID_TYPE>(stage1_mem, S1Wins);
 		stage2 = new Stage2<ID_TYPE>(stage2_mem, var_input,error_input,CellNum, potential);
 
@@ -395,9 +418,8 @@ public:
 			stage2->push(id, win_cnt, c);
 	}
 	void transition() {
-		// if(win_cnt == 0){
-		// 	std::cout<<"stage ratio: "<<stage_ratio<<std::endl;
-		// }
+		// if(win_cnt == 0)
+			// std::cout<<"stage ratio: "<<stage_ratio<<std::endl;
 		stage2->check(win_cnt);
 		win_cnt++;
 		stage1->clear(win_cnt);
@@ -414,6 +436,11 @@ public:
 		reverse(stage2->report_top_k.begin(), stage2->report_top_k.end());
 		return stage2->report_top_k;
 	}
+#ifdef PREDICT_MODE
+	std::map<uint32_t, std::map<ID_TYPE, uint32_t>> predict() {
+		return stage2->predict;
+	}
+#endif
 private: 
 	uint32_t win_cnt;
 	uint32_t last_timestamp;

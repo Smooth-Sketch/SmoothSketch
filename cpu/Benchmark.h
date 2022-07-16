@@ -4,7 +4,6 @@
 #include <bits/stdc++.h>
 #include <hash.h>
 #include <Mmap.h>
-#include<iomanip>
 #include "SmoothSketch.h"
 #include "CorrectDetector.h"
 #include "Strawman.h"
@@ -12,6 +11,7 @@
 
 
 
+// #define memory 250
 
 struct CAIDA_Tuple {
     uint64_t timestamp;
@@ -19,8 +19,10 @@ struct CAIDA_Tuple {
 };
 
 
-typedef uint64_t ID_TYPE;
 
+// typedef uint64_t ID_TYPE;
+// typedef uint32_t ID_TYPE;
+typedef long long ID_TYPE;
 typedef std::multimap<ID_TYPE,std::pair<int, std::pair<uint32_t, uint32_t>>>  ARE_TYPE;
 
 class CAIDABenchmark {
@@ -29,19 +31,19 @@ public:
         load_result = Load(PATH.c_str());
         dataset = (CAIDA_Tuple*)load_result.start;
         length = load_result.length / sizeof(CAIDA_Tuple);
-        std::cout<<length<<std::endl;
+        // std::cout<<length<<std::endl;
 
         oFile.open(RESFILE, std::ios::app);
         // assert(!oFile);
         if(!oFile)
             std::cout<<"open file failed"<<std::endl;
         oFile <<"Memory,"<<"ratio,"<<"K,"<<"CellNumber,"<<"WindowsRecord,"<<"a_k_Th,"<<"MSE_Th,"<<"potential_thres,"
-        <<"Correct(B),"<<"Report(B),"<<"GroundTruth(B),"<<"PR(B),"<<"RR(B),"<<"F1(B),"<<"ARE(B),"<<"Throughput(B),"
+        // <<"Correct(B),"<<"Report(B),"<<"GroundTruth(B),"<<"PR(B),"<<"RR(B),"<<"F1(B),"<<"Throughput(B),"
         <<"Correct(S),"<<"Report(S),"<<"GroundTruth(S),"<<"PR(S),"<<"RR(S),"<<"F1(S),"<<"ARE(S),"<<"Throughput(S),"
-        <<"Correct(U),"<<"Report(U),"<<"GroundTruth(U),"<<"PR(U),"<<"RR(U),"<<"F1(U),"<<"ARE(U),"<<"Throughput(U),"
+        // <<"Correct(U),"<<"Report(U),"<<"GroundTruth(U),"<<"PR(U),"<<"RR(U),"<<"F1(U),"<<"Throughput(U),"
         // <<"Correct(CM),"<<"Report(CM),"<<"GroundTruth(CM),"<<"PR(CM),"<<"RR(CM),"<<"F1(CM),"<<"Throughput(CM),"
         // <<"Correct(CF),"<<"Report(CF),"<<"GroundTruth(CF),"<<"PR(CF),"<<"RR(CF),"<<"F1(CF),"<<"Throughput(CF),"
-        // <<"Correct(LF),"<<"Report(LF),"<<"GroundTruth(LF),"<<"PR(LF),"<<"RR(LF),"<<"F1(LF),"<<"Throughput(LF)"
+        // <<"Correct(LF),"<<"Report(LF),"<<"GroundTruth(LF),"<<"PR(LF),"<<"RR(LF),"<<"F1(LF),"<<"Throughput(LF),"
         <<std::endl;
     }
 	~CAIDABenchmark() {
@@ -77,13 +79,28 @@ public:
         //
         gt.clear();
     }
-
     void Check(std::vector<Report_Slot<ID_TYPE>> &result, std::vector<Report_Slot<ID_TYPE>> &truth) {
         std::cout << result.size() << " " << truth.size() << "\n";
         std::cout << result[0].id << " " << result[0].start_window << " " << result[0].end_window << "\n";
         std::cout << truth[0].id << " " << truth[0].start_window << " " << truth[0].end_window <<"\n";
     }
-
+#ifdef PREDICT_MODE
+    void Predict_Check(std::map<uint32_t, std::map<ID_TYPE, uint32_t>> &predict, 
+                       std::map<ID_TYPE, std::map<uint32_t, uint32_t>> &history) {
+        int correct = 0, total = 0;
+        for (auto i : predict) {
+            for (auto j : i.second) {
+                int predict_result = j.second, truth = history[j.first][i.first];
+                if (abs(truth - predict_result) <= 5 || (2 * truth >= predict_result && truth <= 2 * predict_result)) {
+                    correct++;
+                }
+                total++;
+            }
+        }
+        std::cout << "Predict: " << total << " Correct: " << correct << "\n";
+        std::cout << "Accuracy: " << std::fixed << std::setprecision(4) << 100.0 * correct / total << "\n";
+    }
+#endif
     void TopK_Check(std::vector<Report_Slot<ID_TYPE>> &result, std::vector<Report_Slot<ID_TYPE>> &truth){
         std::multimap<ID_TYPE, std::pair<uint32_t, uint32_t>> gt;
         for(auto &record : truth){
@@ -136,6 +153,7 @@ public:
     float ARE_cal(std::vector<Report_Slot<ID_TYPE>> &result, std::vector<Report_Slot<ID_TYPE>> &truth){
         std::multimap<ID_TYPE,std::pair<int, std::pair<uint32_t, uint32_t>>> gt;
         std::multimap<ID_TYPE,std::pair<int, std::pair<uint32_t, uint32_t>>> smooth_res;
+
         gt = duplicate(truth);
         smooth_res = duplicate(result);
 
@@ -158,13 +176,14 @@ public:
         std::cout<<"same id count: "<<same_id_count<<std::endl;
         std::cout<<"AAE: "<<AAE_2/same_id_count<<std::endl;
         float ARE = ARE_2/same_id_count;
-        oFile<<setprecision(7)<<std::fixed<<ARE_2/same_id_count<<",";
         return ARE;
 
     }
 
     void Run() {
         uint32_t run_length = 30000000;
+        // var_thres = var_input;
+        // for(var_thres = 0.25; var_thres <= 2; var_thres += 0.25){
 
             CorrectDetector<ID_TYPE>* correct_detector = new CorrectDetector<ID_TYPE>(error_thres,var_thres);
 
@@ -173,13 +192,17 @@ public:
             
             std::vector<std::pair<ID_TYPE, uint32_t>> ground_truth = correct_detector->query();
             std::vector<Report_Slot<ID_TYPE>> truth_top_k = correct_detector->report();
-            
-            for(uint32_t memory = 100; memory <= 400; memory += 50){
+        #ifdef PREDICT_MODE
+            std::map<ID_TYPE, std::map<uint32_t, uint32_t>> history = correct_detector->get_history();
+        #endif
+
+            // for(potential_thres = 0; potential_thres <= 2; potential_thres += 0.25){
+            for(uint32_t memory = 10; memory <= 10; memory += 10){
                 std::cout<<"Mem: "<<memory<<std::endl;
 
                 oFile<<memory<<","<<ratio<<","<<K<<","<<bucket_size<<","<<NumOfWin<<","<<var_thres<<","<<error_thres<<","<<potential_thres<<",";
 
-                            /****B A S E L I N E*****/
+            /*
             {
                 Baseline<ID_TYPE,ID_TYPE>* smooth_sketch = new Baseline<ID_TYPE,ID_TYPE>(memory,var_thres,error_thres);
                 auto start = std::chrono::high_resolution_clock::now();
@@ -199,13 +222,13 @@ public:
                 // TopK_Check(smooth_report, truth_top_k);
 
                 float ARE = ARE_cal(smooth_report, truth_top_k);
-                
-                std::cout<<"ARE: "<<setprecision(7)<<std::fixed<<ARE<<std::endl;
+                oFile<<ARE<<",";
+                std::cout<<"ARE: "<<ARE<<std::endl;
 
                 oFile<<run_length / (1.0 * tm.count())<<",";
             }
+            */
             
-                            /*********S M O O T H   S K E T C H********/
             {
                 
                 SmoothSketch<ID_TYPE>* smooth_sketch = new SmoothSketch<ID_TYPE>(memory, var_thres, error_thres, ratio, bucket_size, NumOfWin, potential_thres);
@@ -222,17 +245,21 @@ public:
                 // std::cout<<smooth_result.size()<<std::endl;
                 std::cout<<"SmoothSketch:"<<std::endl;
                 Compare(smooth_result, ground_truth);
+            #ifdef PREDICT_MODE
+                std::map<uint32_t, std::map<ID_TYPE, uint32_t>> predict = smooth_sketch->predict();
+                Predict_Check(predict, history);
+            #endif
                 // Check(smooth_report, truth_top_k);
                 // TopK_Check(smooth_report, truth_top_k);
 
                 float ARE = ARE_cal(smooth_report, truth_top_k);
-                // oFile<<ARE<<",";
-                std::cout<<"ARE: "<<setprecision(7)<<std::fixed<<ARE<<std::endl;
+                oFile<<ARE<<",";
+                std::cout<<"ARE: "<<ARE<<std::endl;
 
-                oFile<<run_length / (1.0 * tm.count())<<",";
+                oFile<<run_length / (1.0 * tm.count())<<std::endl;
             }
             
-                        /******S M O O T H  S K E T C H   T O W E R   C U*******/
+            /*
             {
                 SmoothSketch_CU<ID_TYPE>* smooth_sketch = new SmoothSketch_CU<ID_TYPE>(memory, var_thres, error_thres, ratio, bucket_size, NumOfWin, potential_thres);
                 auto start = std::chrono::high_resolution_clock::now();
@@ -248,14 +275,16 @@ public:
                 std::cout<<smooth_result.size()<<std::endl;
                 std::cout<<"SmoothSketchCU:"<<std::endl;
                 Compare(smooth_result, ground_truth);
-                float ARE = ARE_cal(smooth_report, truth_top_k);
+                // float ARE = ARE_cal(smooth_report, truth_top_k);
                 // oFile<<ARE<<",";
-                std::cout<<"ARE: "<<setprecision(7)<<std::fixed<<ARE<<std::endl;
+                // std::cout<<"ARE: "<<ARE<<std::endl;
                 
                 // TopK_Check(smooth_report, truth_top_k);
 
-                oFile<<run_length / (1.0 * tm.count())<<std::endl;
+                oFile<<run_length / (1.0 * tm.count())<<",";
             }
+            
+            */
             
             
             }

@@ -2,12 +2,12 @@
 #define _PARAM_H_
 #include <bits/stdc++.h>
 #include "Matrix.h"
-
+// #define PREDICT_MODE
 
 const uint32_t window_size = 10000;
 
 // memory ratio of stage 1 to stage 2
-const double stage_ratio_p = 0.8;
+const double stage_ratio_p = 0.4;
 
 // the minimum value for a_K
 const double var_thres_p = 1;
@@ -18,19 +18,19 @@ const int P = 7;
 // degree of polynomial
 const int K = 2;
 
-// threshold for mean square error
-const double error_thres_p = 4;
-
 // number of recorded windows in stage 1
 const int S = 4;
 
 const int S_p = S;
 
+// threshold for mean square error
+const double error_thres_p = 1;
+
 // number of cells in each bucket
 const int bucket_size_p = 4;
 
 // threshold for potential
-const double potential_thres_p = 0.5;
+const double potential_thres_p = 0;
 
 double calcu_matrix[K + 1][P] = {};
 double calcu_matrix_try[K + 1][S_p] = {};

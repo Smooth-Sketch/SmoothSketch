@@ -48,12 +48,8 @@ public:
 	CorrectDetector(double error_input, double var_input) : win_cnt(0), last_timestamp(0) {
 		error_thres = error_input;
 		var_thres = var_input;
-		// oFile.open("./ttmp_g.csv", std::ios::app);
-		// oFile<<"groundTruth"<<std::endl;
 	}
-	~CorrectDetector() {
-		// oFile.close();
-	}
+	~CorrectDetector() {}
 	void insert(ID_TYPE id, uint32_t timestamp) {
 		if (timestamp > last_timestamp + window_size) {
 			transition();
@@ -64,6 +60,9 @@ public:
 		}
 		assert(id == detect[id_map[id]].id);
 		detect[id_map[id]].add(win_cnt);
+	#ifdef PREDICT_MODE
+		map[id][win_cnt]++;
+	#endif
 	}
 	void transition() {
 		last_window = now_window;
@@ -101,11 +100,6 @@ public:
 			}
 			if (error / P <= error_thres) {
 				result.emplace_back(std::make_pair(i.id, win_cnt));
-				// oFile<<i.id<<",";
-				// for(int t = 0; t < P; ++t){
-				// 	oFile<<i.counter[t]<<",";	
-				// }
-				// oFile<<std::endl;
 				if (last_window.find(i.id) != last_window.end()) {
 					now_window[i.id] = last_window[i.id];
 					last_window.erase(i.id);
@@ -134,6 +128,11 @@ public:
 		reverse(report_top_k.begin(), report_top_k.end());
 		return report_top_k;
 	}
+#ifdef PREDICT_MODE
+	std::map<ID_TYPE, std::map<uint32_t, uint32_t>> get_history() {
+		return history;
+	}
+#endif
 private:
 	uint32_t win_cnt;
 	uint32_t last_timestamp;
@@ -143,9 +142,11 @@ private:
 	std::vector<Report_Slot<ID_TYPE>> report_top_k;
 	std::map<ID_TYPE, uint32_t> now_window;
 	std::map<ID_TYPE, uint32_t> last_window; 
+#ifdef PREDICT_MODE
+	std::map<ID_TYPE, std::map<uint32_t, uint32_t>> history;
+#endif
 	double var_thres = var_thres_p;
 	double error_thres = error_thres_p;
-	// std::ofstream oFile;
 };
 
 
